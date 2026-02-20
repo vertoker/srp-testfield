@@ -2,15 +2,20 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RendererUtils;
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Code.Rendering
 {
     public class CustomRenderPipeline : RenderPipeline
     {
+        private readonly RenderGraph _renderGraph;
+        private readonly CustomCameraRenderer _cameraRenderer;
         private readonly CustomRenderPipelineAsset _asset;
 
         public CustomRenderPipeline(CustomRenderPipelineAsset asset)
         {
+            _renderGraph = new("Custom SRP Render Graph");
+            _cameraRenderer = new CustomCameraRenderer();
             _asset = asset;
         }
 
@@ -18,36 +23,18 @@ namespace Code.Rendering
         {
             foreach (var camera in cameras)
             {
-                context.SetupCameraProperties(camera);
+                if (!camera.isActiveAndEnabled) continue;
                 
-                // 2. Culling objects
-                if (!camera.TryGetCullingParameters(out var cullingParameters)) continue;
-                
-                var cullingResults = context.Cull(ref cullingParameters);
-            
-                // 3. Drawing objects
-                
-                var cmd = new CommandBuffer();
-                
-                cmd.ClearRenderTarget(true, true, Color.black);
-                
-                cmd.BeginSample("Render Skybox");
-                var skyboxRendererList = context.CreateSkyboxRendererList(camera);
-                cmd.DrawRendererList(skyboxRendererList);
-                cmd.EndSample("Render Skybox");
-                
-                cmd.BeginSample("Render Objects");
-                var shaderPassName = new ShaderTagId("CustomLightModeTag");
-                var desc = new RendererListDesc(shaderPassName, cullingResults, camera);
-                var rendererList = context.CreateRendererList(desc);
-                cmd.DrawRendererList(rendererList);
-                cmd.EndSample("Render Objects");
-                
-                context.ExecuteCommandBuffer(cmd);
-                cmd.Dispose();
+                _cameraRenderer.Render(_renderGraph, context, camera);
             }
             
             context.Submit();
+            _renderGraph.EndFrame();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            _renderGraph.Cleanup();
         }
     }
 }
